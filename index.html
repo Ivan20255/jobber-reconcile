@@ -1,0 +1,343 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>Jobber Reconcile - Working Version</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/PapaParse/5.4.1/papaparse.min.js"></script>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <style>
+        * { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; }
+        body { background: #f3f4f6; min-height: 100vh; padding: 20px; }
+        .card { background: white; border-radius: 12px; box-shadow: 0 1px 3px rgba(0,0,0,0.1); padding: 20px; margin-bottom: 16px; }
+        .btn { background: #3b82f6; color: white; padding: 12px 24px; border-radius: 8px; border: none; cursor: pointer; font-weight: 600; }
+        .btn:hover { background: #2563eb; }
+        .upload-area { 
+            border: 2px dashed #d1d5db; 
+            border-radius: 12px; 
+            padding: 40px; 
+            text-align: center; 
+            cursor: pointer;
+            transition: all 0.2s;
+        }
+        .upload-area:hover { border-color: #3b82f6; background: #eff6ff; }
+        .status { margin-top: 12px; padding: 12px; border-radius: 8px; }
+        .status.success { background: #d1fae5; color: #065f46; }
+        .status.error { background: #fee2e2; color: #991b1b; }
+        .status.info { background: #dbeafe; color: #1e40af; }
+        
+        .match-exact { border-left: 4px solid #10b981; background: #ecfdf5; }
+        .match-partial { border-left: 4px solid #f59e0b; background: #fffbeb; }
+        .match-none { border-left: 4px solid #ef4444; background: #fef2f2; }
+        
+        .hidden { display: none !important; }
+    </style>
+</head>
+<body>
+    <div class="max-w-2xl mx-auto">
+        <h1 class="text-2xl font-bold text-gray-800 mb-6">💰 Jobber Expense Reconciler</h1>
+        
+        <!-- Step 1: Bank Transactions -->
+        <div class="card">
+            <h2 class="text-lg font-semibold text-gray-700 mb-3">Step 1: Upload Bank Transactions</h2>
+            <p class="text-sm text-gray-500 mb-4">CSV or PDF from your bank/credit card</p>
+            
+            <div class="upload-area" onclick="document.getElementById('bankInput').click()">
+                <i class="fas fa-university text-4xl text-gray-400 mb-3"></i>
+                <p class="text-gray-600 font-medium">Click to upload bank file</p>
+                <p class="text-sm text-gray-400 mt-1">CSV or PDF</p>
+            </div>
+            <input type="file" id="bankInput" class="hidden" accept=".csv,.pdf" onchange="handleBank(this)">
+            <div id="bankStatus"></div>
+        </div>
+
+        <!-- Step 2: Jobber Expenses -->
+        <div class="card">
+            <h2 class="text-lg font-semibold text-gray-700 mb-3">Step 2: Upload Jobber Report</h2>
+            <p class="text-sm text-gray-500 mb-4">CSV export from Jobber</p>
+            
+            <div class="upload-area" onclick="document.getElementById('jobberInput').click()">
+                <i class="fas fa-file-csv text-4xl text-gray-400 mb-3"></i>
+                <p class="text-gray-600 font-medium">Click to upload Jobber CSV</p>
+                <p class="text-sm text-gray-400 mt-1">.csv file only</p>
+            </div>
+            <input type="file" id="jobberInput" class="hidden" accept=".csv" onchange="handleJobber(this)">
+            <div id="jobberStatus"></div>
+        </div>
+
+        <!-- Step 3: Match -->
+        <div id="matchSection" class="card hidden">
+            <h2 class="text-lg font-semibold text-gray-700 mb-3">Step 3: Run Matching</h2>
+            <button onclick="runMatch()" class="btn w-full">
+                <i class="fas fa-sync-alt mr-2"></i>Match Transactions
+            </button>
+        </div>
+
+        <!-- Results -->
+        <div id="resultsSection" class="hidden">
+            <div class="card">
+                <h2 class="text-lg font-semibold text-gray-700 mb-3">Results</h2>
+                <div class="grid grid-cols-3 gap-4 mb-4">
+                    <div class="text-center p-3 bg-green-50 rounded-lg">
+                        <p class="text-2xl font-bold text-green-600" id="countExact">0</p>
+                        <p class="text-xs text-gray-600">Matched</p>
+                    </div>
+                    <div class="text-center p-3 bg-yellow-50 rounded-lg">
+                        <p class="text-2xl font-bold text-yellow-600" id="countPartial">0</p>
+                        <p class="text-xs text-gray-600">Partial</p>
+                    </div>
+                    <div class="text-center p-3 bg-red-50 rounded-lg">
+                        <p class="text-2xl font-bold text-red-600" id="countNone">0</p>
+                        <p class="text-xs text-gray-600">Missing</p>
+                    </div>
+                </div>
+            </div>
+            
+            <div id="transactionsList"></div>
+        </div>
+    </div>
+
+    <script>
+        // Data storage
+        let bankData = [];
+        let jobberData = [];
+        let employees = JSON.parse(localStorage.getItem('employees')) || [
+            { name: 'Jacob Stephens', phone: '', cards: ['JACOB STEPHENS'] },
+            { name: 'Jason Chavez Perez', phone: '', cards: ['JASON CHAVEZ PEREZ'] },
+            { name: 'Petr Karabane', phone: '', cards: ['PETR KARABANE'] },
+            { name: 'Ernesto Meza', phone: '', cards: ['ERNESTO MEZA'] },
+            { name: 'Dustin Wooten', phone: '', cards: ['DUSTIN WOOOTEN'] },
+            { name: 'Arturo Landa', phone: '', cards: ['ARTURO'] },
+            { name: 'Vitali Tekhnilenko', phone: '', cards: ['VITALI'] },
+        ];
+
+        // ========== BANK FILE HANDLER ==========
+        function handleBank(input) {
+            const file = input.files[0];
+            if (!file) return;
+
+            const status = document.getElementById('bankStatus');
+            status.innerHTML = '<div class="status info">Reading ' + file.name + '...</div>';
+
+            const reader = new FileReader();
+            reader.onload = function(e) {
+                try {
+                    const text = e.target.result;
+                    
+                    Papa.parse(text, {
+                        header: true,
+                        skipEmptyLines: true,
+                        complete: function(results) {
+                            bankData = results.data.map(row => ({
+                                date: row.Date || row.date || row['Transaction Date'] || '',
+                                merchant: row.Merchant || row.Description || row.Payee || row['Name'] || '',
+                                amount: Math.abs(parseFloat(row.Amount || row['Transaction Amount'] || row.Debit || 0)),
+                                raw: row
+                            })).filter(x => x.amount > 0);
+
+                            status.innerHTML = '<div class="status success">✓ Loaded ' + bankData.length + ' bank transactions</div>';
+                            checkReady();
+                        },
+                        error: function(err) {
+                            status.innerHTML = '<div class="status error">Error: ' + err.message + '</div>';
+                        }
+                    });
+                } catch (e) {
+                    status.innerHTML = '<div class="status error">Error reading file: ' + e.message + '</div>';
+                }
+            };
+            reader.readAsText(file);
+        }
+
+        // ========== JOBBER FILE HANDLER ==========
+        function handleJobber(input) {
+            console.log('handleJobber called');
+            const file = input.files[0];
+            console.log('File selected:', file);
+            
+            if (!file) {
+                console.log('No file selected');
+                return;
+            }
+
+            const status = document.getElementById('jobberStatus');
+            status.innerHTML = '<div class="status info">Reading ' + file.name + ' (' + (file.size/1024).toFixed(1) + ' KB)...</div>';
+
+            const reader = new FileReader();
+            reader.onload = function(e) {
+                console.log('File loaded');
+                try {
+                    let text = e.target.result;
+                    console.log('Text length:', text.length);
+                    
+                    // Find the header row
+                    const lines = text.split('\n');
+                    let headerIndex = -1;
+                    for (let i = 0; i < Math.min(20, lines.length); i++) {
+                        if (lines[i].includes('Item name')) {
+                            headerIndex = i;
+                            break;
+                        }
+                    }
+                    
+                    console.log('Header found at line:', headerIndex);
+                    
+                    if (headerIndex === -1) {
+                        status.innerHTML = '<div class="status error">Could not find "Item name" column. Is this a Jobber export?</div>';
+                        return;
+                    }
+
+                    // Parse from header onwards
+                    const cleanText = lines.slice(headerIndex).join('\n');
+                    
+                    Papa.parse(cleanText, {
+                        header: true,
+                        skipEmptyLines: true,
+                        complete: function(results) {
+                            console.log('Parse complete, rows:', results.data.length);
+                            console.log('First row:', results.data[0]);
+                            
+                            jobberData = results.data.map(row => {
+                                const amountStr = (row['Total $'] || row['Total'] || '0').replace(/,/g, '').replace(/"/g, '');
+                                const amount = parseFloat(amountStr);
+                                
+                                return {
+                                    item: row['Item name'] || '',
+                                    amount: amount,
+                                    employee: row['Entered by'] || '',
+                                    job: row['Job #'] || '',
+                                    date: row.Date || '',
+                                    raw: row
+                                };
+                            }).filter(x => x.amount > 0);
+
+                            console.log('Processed:', jobberData.length, 'expenses');
+                            status.innerHTML = '<div class="status success">✓ Loaded ' + jobberData.length + ' Jobber expenses</div>';
+                            checkReady();
+                        },
+                        error: function(err) {
+                            console.error('Parse error:', err);
+                            status.innerHTML = '<div class="status error">Parse error: ' + err.message + '</div>';
+                        }
+                    });
+                } catch (e) {
+                    console.error('Error:', e);
+                    status.innerHTML = '<div class="status error">Error: ' + e.message + '</div>';
+                }
+            };
+            reader.onerror = function(e) {
+                status.innerHTML = '<div class="status error">File read error</div>';
+            };
+            reader.readAsText(file);
+        }
+
+        // ========== CHECK IF READY TO MATCH ==========
+        function checkReady() {
+            if (bankData.length > 0 && jobberData.length > 0) {
+                document.getElementById('matchSection').classList.remove('hidden');
+            }
+        }
+
+        // ========== RUN MATCHING ==========
+        function runMatch() {
+            const results = [];
+            const usedJobber = new Set();
+
+            // For each bank transaction, find best match
+            for (const bank of bankData) {
+                let bestMatch = null;
+                let bestScore = 0;
+
+                for (let i = 0; i < jobberData.length; i++) {
+                    if (usedJobber.has(i)) continue;
+
+                    const jobber = jobberData[i];
+                    const amountDiff = Math.abs(bank.amount - jobber.amount);
+                    
+                    let score = 0;
+                    if (amountDiff < 0.01) score = 100; // Exact
+                    else if (amountDiff < 1) score = 80;  // Close
+                    else if (amountDiff < 5) score = 60;  // Partial
+
+                    if (score > bestScore) {
+                        bestScore = score;
+                        bestMatch = { ...jobber, index: i };
+                    }
+                }
+
+                if (bestMatch && bestScore >= 80) {
+                    usedJobber.add(bestMatch.index);
+                }
+
+                results.push({
+                    bank: bank,
+                    jobber: bestMatch,
+                    score: bestScore,
+                    status: bestScore >= 100 ? 'exact' : bestScore >= 80 ? 'partial' : 'none'
+                });
+            }
+
+            displayResults(results);
+        }
+
+        // ========== DISPLAY RESULTS ==========
+        function displayResults(results) {
+            const exact = results.filter(r => r.status === 'exact').length;
+            const partial = results.filter(r => r.status === 'partial').length;
+            const none = results.filter(r => r.status === 'none').length;
+
+            document.getElementById('countExact').textContent = exact;
+            document.getElementById('countPartial').textContent = partial;
+            document.getElementById('countNone').textContent = none;
+
+            const list = document.getElementById('transactionsList');
+            let html = '';
+
+            for (const r of results) {
+                const cssClass = r.status === 'exact' ? 'match-exact' : r.status === 'partial' ? 'match-partial' : 'match-none';
+                const icon = r.status === 'exact' ? '✓' : r.status === 'partial' ? '~' : '✗';
+                const label = r.status === 'exact' ? 'Matched' : r.status === 'partial' ? 'Close' : 'Missing';
+                
+                // Find employee
+                const emp = findEmployee(r.bank.merchant);
+                
+                html += '<div class="card ' + cssClass + '">';
+                html += '<div class="flex justify-between items-start">';
+                html += '<div>';
+                html += '<span class="font-bold">' + icon + ' ' + (r.bank.merchant || 'Unknown') + '</span>';
+                html += '<span class="ml-2 text-sm text-gray-500">$' + r.bank.amount.toFixed(2) + '</span>';
+                html += '<div class="text-sm text-gray-600">' + label;
+                if (r.jobber) {
+                    html += ' → ' + r.jobber.item + ' ($' + r.jobber.amount.toFixed(2) + ')';
+                }
+                html += '</div>';
+                html += '</div>';
+                
+                // SMS button for unmatched
+                if (r.status !== 'exact' && emp && emp.phone) {
+                    const msg = `Hi ${emp.name.split(' ')[0]}, need receipt for: ${r.bank.merchant} $${r.bank.amount}`;
+                    html += '<a href="sms:' + emp.phone + '?body=' + encodeURIComponent(msg) + '" class="btn text-sm" style="padding: 8px 16px;">📱 SMS</a>';
+                }
+                
+                html += '</div>';
+                html += '</div>';
+            }
+
+            list.innerHTML = html;
+            document.getElementById('resultsSection').classList.remove('hidden');
+        }
+
+        function findEmployee(merchantName) {
+            if (!merchantName) return null;
+            const upper = merchantName.toUpperCase();
+            for (const emp of employees) {
+                for (const card of emp.cards) {
+                    if (upper.includes(card)) return emp;
+                }
+            }
+            return null;
+        }
+    </script>
+</body>
+</html>
