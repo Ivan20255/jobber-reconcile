@@ -75,6 +75,28 @@
         </div>
 
         <!-- Results -->
+        <!-- Employee Directory -->
+        <div class="card">
+            <div class="flex justify-between items-center mb-4">
+                <div>
+                    <h2 class="text-lg font-semibold text-gray-700">Employee Directory</h2>
+                    <p class="text-sm text-gray-500">Add phone numbers for SMS receipt requests</p>
+                </div>
+                <button onclick="toggleEmployeeForm()" class="btn text-sm" style="padding: 8px 16px;">
+                    <i class="fas fa-plus mr-1"></i> Add
+                </button>
+            </div>
+            
+            <div id="employeeForm" class="hidden mb-4 p-4 bg-gray-50 rounded-lg">
+                <input type="text" id="newEmpName" placeholder="Employee Name" class="w-full mb-2 p-2 border rounded">
+                <input type="tel" id="newEmpPhone" placeholder="Phone Number (+1...)" class="w-full mb-2 p-2 border rounded">
+                <input type="text" id="newEmpCards" placeholder="Cardholder names (comma separated)" class="w-full mb-2 p-2 border rounded">
+                <button onclick="addEmployee()" class="btn text-sm" style="padding: 8px 16px;">Save</button>
+            </div>
+            
+            <div id="employeeList" class="space-y-2"></div>
+        </div>
+
         <div id="resultsSection" class="hidden">
             <div class="card">
                 <h2 class="text-lg font-semibold text-gray-700 mb-3">Results</h2>
@@ -290,6 +312,63 @@
             displayResults(results);
         }
 
+        // ========== EMPLOYEE MANAGEMENT ==========
+        function toggleEmployeeForm() {
+            document.getElementById('employeeForm').classList.toggle('hidden');
+        }
+
+        function addEmployee() {
+            const name = document.getElementById('newEmpName').value.trim();
+            const phone = document.getElementById('newEmpPhone').value.trim();
+            const cards = document.getElementById('newEmpCards').value.split(',').map(c => c.trim().toUpperCase());
+            
+            if (!name) {
+                alert('Please enter a name');
+                return;
+            }
+            
+            employees.push({
+                name: name,
+                phone: phone,
+                cards: cards.length > 0 && cards[0] ? cards : [name.toUpperCase()]
+            });
+            
+            localStorage.setItem('employees', JSON.stringify(employees));
+            renderEmployees();
+            
+            // Clear form
+            document.getElementById('newEmpName').value = '';
+            document.getElementById('newEmpPhone').value = '';
+            document.getElementById('newEmpCards').value = '';
+            document.getElementById('employeeForm').classList.add('hidden');
+        }
+
+        function renderEmployees() {
+            const list = document.getElementById('employeeList');
+            if (employees.length === 0) {
+                list.innerHTML = '<p class="text-gray-400 text-sm">No employees added yet</p>';
+                return;
+            }
+            
+            list.innerHTML = employees.map((emp, idx) => `
+                <div class="flex justify-between items-center p-3 bg-gray-50 rounded-lg">
+                    <div>
+                        <p class="font-medium">${emp.name}</p>
+                        <p class="text-sm text-gray-500">${emp.phone || 'No phone'}</p>
+                    </div>
+                    <button onclick="deleteEmployee(${idx})" class="text-red-500 hover:text-red-700">
+                        <i class="fas fa-trash"></i>
+                    </button>
+                </div>
+            `).join('');
+        }
+
+        function deleteEmployee(idx) {
+            employees.splice(idx, 1);
+            localStorage.setItem('employees', JSON.stringify(employees));
+            renderEmployees();
+        }
+
         // ========== DISPLAY RESULTS ==========
         function displayResults(results) {
             const exact = results.filter(r => r.status === 'exact').length;
@@ -325,8 +404,12 @@
                 
                 // SMS button for unmatched
                 if (r.status !== 'exact' && emp && emp.phone) {
-                    const msg = `Hi ${emp.name.split(' ')[0]}, need receipt for: ${r.bank.merchant} $${r.bank.amount}`;
-                    html += '<a href="sms:' + emp.phone + '?body=' + encodeURIComponent(msg) + '" class="btn text-sm" style="padding: 8px 16px;">📱 SMS</a>';
+                    const msg = `Hi ${emp.name.split(' ')[0]},\n\nI need a receipt for this company card transaction:\n\nMerchant: ${r.bank.merchant}\nAmount: $${r.bank.amount.toFixed(2)}\nDate: ${r.bank.date || 'N/A'}\n\nPlease submit through Jobber or reply with a photo of the receipt.\n\nThanks!`;
+                    html += '<a href="sms:' + emp.phone + '?body=' + encodeURIComponent(msg) + '" class="btn text-sm flex items-center gap-1" style="padding: 8px 12px; background: #10b981;">';
+                    html += '<i class="fas fa-comment-dots"></i> SMS';
+                    html += '</a>';
+                } else if (r.status !== 'exact' && (!emp || !emp.phone)) {
+                    html += '<span class="text-xs text-gray-400">No phone #</span>';
                 }
                 
                 html += '</div>';
@@ -347,6 +430,9 @@
             }
             return null;
         }
+
+        // Initialize
+        renderEmployees();
     </script>
 </body>
 </html>
