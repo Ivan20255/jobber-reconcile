@@ -277,9 +277,14 @@
 
         // ========== RUN MATCHING ==========
         function runMatch() {
-            console.log('Starting match...');
+            console.log('=== MATCH BUTTON CLICKED ===');
             console.log('Bank transactions:', bankData.length);
             console.log('Jobber expenses:', jobberData.length);
+            
+            if (bankData.length === 0 || jobberData.length === 0) {
+                alert('Please upload both bank and Jobber files first!');
+                return;
+            }
             
             // Debug: Show first few of each
             console.log('First 3 bank:', bankData.slice(0, 3));
@@ -510,7 +515,7 @@
         function findEmployee(merchantName) {
             if (!merchantName) return null;
             const upper = merchantName.toUpperCase();
-            for (const emp of employees) {
+            for (const emp of employeeDirectory) {
                 for (const card of emp.cards) {
                     if (upper.includes(card)) return emp;
                 }
