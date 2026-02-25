@@ -270,11 +270,21 @@
         function checkReady() {
             if (bankData.length > 0 && jobberData.length > 0) {
                 document.getElementById('matchSection').classList.remove('hidden');
+                detectActiveEmployees();
+                renderEmployees();
             }
         }
 
         // ========== RUN MATCHING ==========
         function runMatch() {
+            console.log('Starting match...');
+            console.log('Bank transactions:', bankData.length);
+            console.log('Jobber expenses:', jobberData.length);
+            
+            // Debug: Show first few of each
+            console.log('First 3 bank:', bankData.slice(0, 3));
+            console.log('First 3 jobber:', jobberData.slice(0, 3));
+            
             const results = [];
             const usedJobber = new Set();
 
@@ -288,6 +298,11 @@
 
                     const jobber = jobberData[i];
                     const amountDiff = Math.abs(bank.amount - jobber.amount);
+                    
+                    // Debug first transaction
+                    if (results.length === 0) {
+                        console.log(`Comparing bank $${bank.amount} with jobber $${jobber.amount}, diff: $${amountDiff}`);
+                    }
                     
                     let score = 0;
                     if (amountDiff < 0.01) score = 100; // Exact
@@ -312,6 +327,15 @@
                 });
             }
 
+            console.log('Match complete:', results.length, 'results');
+            console.log('Exact matches:', results.filter(r => r.status === 'exact').length);
+            console.log('Partial matches:', results.filter(r => r.status === 'partial').length);
+            console.log('No matches:', results.filter(r => r.status === 'none').length);
+            
+            // Update employee list based on unmatched transactions
+            detectActiveEmployees();
+            renderEmployees();
+            
             displayResults(results);
         }
 
