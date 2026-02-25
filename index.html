@@ -124,14 +124,17 @@
         // Data storage
         let bankData = [];
         let jobberData = [];
-        let employees = JSON.parse(localStorage.getItem('employees')) || [
+        let activeEmployees = []; // Only employees found in uploaded files
+        
+        // Default employees with empty phones - will be populated from localStorage
+        let employeeDirectory = JSON.parse(localStorage.getItem('employeeDirectory')) || [
             { name: 'Jacob Stephens', phone: '', cards: ['JACOB STEPHENS'] },
             { name: 'Jason Chavez Perez', phone: '', cards: ['JASON CHAVEZ PEREZ'] },
             { name: 'Petr Karabane', phone: '', cards: ['PETR KARABANE'] },
             { name: 'Ernesto Meza', phone: '', cards: ['ERNESTO MEZA'] },
             { name: 'Dustin Wooten', phone: '', cards: ['DUSTIN WOOOTEN'] },
-            { name: 'Arturo Landa', phone: '', cards: ['ARTURO'] },
-            { name: 'Vitali Tekhnilenko', phone: '', cards: ['VITALI'] },
+            { name: 'Arturo Landa Dominguez', phone: '', cards: ['ARTURO LANDA DOMINGUEZ'] },
+            { name: 'Vitali Tekhnilenko', phone: '', cards: ['VITALI TEKHNILENKO'] },
         ];
 
         // ========== BANK FILE HANDLER ==========
@@ -327,13 +330,13 @@
                 return;
             }
             
-            employees.push({
+            employeeDirectory.push({
                 name: name,
                 phone: phone,
                 cards: cards.length > 0 && cards[0] ? cards : [name.toUpperCase()]
             });
             
-            localStorage.setItem('employees', JSON.stringify(employees));
+            localStorage.setItem('employeeDirectory', JSON.stringify(employeeDirectory));
             renderEmployees();
             
             // Clear form
@@ -343,30 +346,90 @@
             document.getElementById('employeeForm').classList.add('hidden');
         }
 
+        function updateEmployeePhone(idx, phone) {
+            employeeDirectory[idx].phone = phone;
+            localStorage.setItem('employeeDirectory', JSON.stringify(employeeDirectory));
+            // Also update in active employees if present
+            const activeIdx = activeEmployees.findIndex(e => e.name === employeeDirectory[idx].name);
+            if (activeIdx >= 0) {
+                activeEmployees[activeIdx].phone = phone;
+            }
+        }
+
         function renderEmployees() {
             const list = document.getElementById('employeeList');
-            if (employees.length === 0) {
-                list.innerHTML = '<p class="text-gray-400 text-sm">No employees added yet</p>';
+            
+            // Only show employees that are in activeEmployees (found in uploaded files)
+            const displayEmployees = activeEmployees.length > 0 ? activeEmployees : [];
+            
+            if (displayEmployees.length === 0) {
+                list.innerHTML = '<p class="text-gray-400 text-sm">Upload files to see employees</p>';
                 return;
             }
             
-            list.innerHTML = employees.map((emp, idx) => `
-                <div class="flex justify-between items-center p-3 bg-gray-50 rounded-lg">
-                    <div>
+            list.innerHTML = displayEmployees.map((emp, idx) => {
+                // Find full employee data from directory
+                const fullEmp = employeeDirectory.find(e => e.name === emp.name) || emp;
+                const dirIdx = employeeDirectory.findIndex(e => e.name === emp.name);
+                
+                return `
+                <div class="p-3 bg-gray-50 rounded-lg">
+                    <div class="flex justify-between items-start mb-2">
                         <p class="font-medium">${emp.name}</p>
-                        <p class="text-sm text-gray-500">${emp.phone || 'No phone'}</p>
+                        ${dirIdx >= 0 ? `<button onclick="deleteEmployee(${dirIdx})" class="text-red-500 hover:text-red-700">
+                            <i class="fas fa-trash"></i>
+                        </button>` : ''}
                     </div>
-                    <button onclick="deleteEmployee(${idx})" class="text-red-500 hover:text-red-700">
-                        <i class="fas fa-trash"></i>
-                    </button>
+                    <div class="flex items-center gap-2">
+                        <i class="fas fa-phone text-gray-400"></i>
+                        <input type="tel" 
+                            value="${fullEmp.phone || ''}" 
+                            placeholder="Enter phone number"
+                            onchange="updateEmployeePhone(${dirIdx >= 0 ? dirIdx : 0}, this.value)"
+                            class="flex-1 p-2 text-sm border rounded focus:ring-2 focus:ring-blue-500">
+                    </div>
+                    ${fullEmp.phone ? `<span class="text-xs text-green-600 mt-1 block">✓ SMS ready</span>` : ''}
                 </div>
-            `).join('');
+            `}).join('');
         }
 
         function deleteEmployee(idx) {
-            employees.splice(idx, 1);
-            localStorage.setItem('employees', JSON.stringify(employees));
+            employeeDirectory.splice(idx, 1);
+            localStorage.setItem('employeeDirectory', JSON.stringify(employeeDirectory));
+            // Refresh active employees
+            detectActiveEmployees();
             renderEmployees();
+        }
+
+        // Detect which employees are in the uploaded files
+        function detectActiveEmployees() {
+            const foundNames = new Set();
+            
+            // Check bank transactions
+            bankData.forEach(tx => {
+                const emp = findEmployeeInDirectory(tx.merchant);
+                if (emp) foundNames.add(emp.name);
+            });
+            
+            // Check jobber expenses
+            jobberData.forEach(exp => {
+                const emp = findEmployeeInDirectory(exp.employee);
+                if (emp) foundNames.add(emp.name);
+            });
+            
+            // Build active employees list with current phone numbers
+            activeEmployees = Array.from(foundNames).map(name => {
+                const emp = employeeDirectory.find(e => e.name === name);
+                return emp || { name, phone: '', cards: [name.toUpperCase()] };
+            });
+        }
+
+        function findEmployeeInDirectory(name) {
+            if (!name) return null;
+            const upper = name.toUpperCase();
+            return employeeDirectory.find(emp => 
+                emp.cards.some(card => upper.includes(card))
+            );
         }
 
         // ========== DISPLAY RESULTS ==========
